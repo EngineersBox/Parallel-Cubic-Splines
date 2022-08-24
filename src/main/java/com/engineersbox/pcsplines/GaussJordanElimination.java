@@ -176,7 +176,7 @@ public class GaussJordanElimination {
     }
 
     public static void main(String[] args) {
-        final OpenCLParams params = new OpenCLParams("E:\\COMP4610\\assign1\\src\\main\\resources\\kernels\\gauss_jordan_elimination.cl");
+        final OpenCLParams params = new OpenCLParams("/kernels/gauss_jordan_elimination.cl");
         final double[][] input = new double[][]{
                 {1,2,3},
                 {4,5,6},

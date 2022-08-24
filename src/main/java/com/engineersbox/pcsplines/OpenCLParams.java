@@ -1,10 +1,14 @@
 package com.engineersbox.pcsplines;
 
+import org.apache.commons.lang3.ClassLoaderUtils;
 import org.jocl.*;
 
 import java.io.IOException;
+import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Objects;
 
 import static org.jocl.CL.*;
 
@@ -68,8 +72,8 @@ public class OpenCLParams {
 
         final String programCode;
         try {
-            programCode = Files.readString(Path.of(filePath));
-        } catch (IOException e) {
+            programCode = Files.readString(Paths.get(Objects.requireNonNull(getClass().getResource(filePath)).toURI()));
+        } catch (IOException | URISyntaxException e) {
             throw new RuntimeException(e);
         }
         this.program = clCreateProgramWithSource(
