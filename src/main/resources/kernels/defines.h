@@ -1,7 +1,7 @@
 #pragma once
 
-#ifdef COMP4610_OPENCL_DEFINES
-#define COMP4610_OPENCL_DEFINES
+#ifdef PARALLEL_CUBIC_SPLINES_OPENCL_DEFINES
+#define PARALLEL_CUBIC_SPLINES_OPENCL_DEFINES
 
 // general
 #define get_global_id(x) // global index, set x=0
@@ -273,4 +273,4 @@
 #define as_ulong8(x)
 #define as_ulong16(x)
 
-#endif // COMP4610_OPENCL_DEFINES
+#endif // PARALLEL_CUBIC_SPLINES_OPENCL_DEFINES
