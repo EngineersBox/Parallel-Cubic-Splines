@@ -1,0 +1,44 @@
+#define AP 0.5
+
+kernel void computeBezierControlPoints(__global double* points, __global double* bezierPoints) {
+    int i = get_global_id(0);
+
+    double paX = points[(i * 2)];
+    double paY = points[(i * 2) + 1];
+    double pbX = points[(i * 2) + 2];
+    double pbY = points[(i * 2) + 3];
+    double pcX = points[(i * 2) + 4];
+    double pcY = points[(i * 2) + 5];
+
+    double abX = pbX - paX;
+    double abY = pbY - paY;
+    double acX = pcX - paX;
+    double acY = pcY - paY;
+    double lac = sqrt(acX * acX + acY * acY);
+    acX = acX / lac;
+    acY = acY / lac;
+
+    double proj = abX * acX + abY * acY;
+    proj = fabs(proj);
+    double apX = proj * acX;
+    double apY = proj * acY;
+
+    double p1X = pbX - AP * apX;
+    double p1Y = pbY - AP * apY;
+    bezierPoints[(i * 4)] = p1X;
+    bezierPoints[(i * 4) + 1] = p1Y;
+
+    acX = -acX;
+    acY = -acY;
+    double cbX = pbX - pcX;
+    double cbY = pbY - pcY;
+    proj = cbX * acX + cbY * acY;
+    proj = fabs(proj);
+    apX = proj * acX;
+    apY = proj * acY;
+
+    double p2X = pbX - AP * apX;
+    double p2Y = pbY - AP * apY;
+    bezierPoints[(i * 4) + 2] = p2X;
+    bezierPoints[(i * 4) + 3] = p2Y;
+}

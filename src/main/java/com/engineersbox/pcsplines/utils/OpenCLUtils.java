@@ -15,8 +15,8 @@ public class OpenCLUtils {
     }
 
     public static int writeBuffer2D(final cl_command_queue commandQueue,
-                                     final cl_mem buffer,
-                                     final double[][] array) {
+                                    final cl_mem buffer,
+                                    final double[][] array) {
         long byteOffset = 0;
         for (final double[] element : array) {
             final int bytes = element.length * Sizeof.cl_double;
@@ -40,8 +40,8 @@ public class OpenCLUtils {
     }
 
     public static int readBuffer2D(final cl_command_queue commandQueue,
-                                    final cl_mem buffer,
-                                    final double[][] array)  {
+                                   final cl_mem buffer,
+                                   final double[][] array)  {
         long byteOffset = 0;
         for (final double[] element : array) {
             final int bytes = element.length * Sizeof.cl_double;
@@ -64,11 +64,12 @@ public class OpenCLUtils {
         return CL_SUCCESS;
     }
 
+    @SafeVarargs
     public static int bindKernelArgs(final cl_kernel kernel,
-                                     final List<Pair<Pointer, Integer>> args) {
+                                     final Pair<Pointer, Integer> ...args) {
         int result;
-        for (int i = 0; i < args.size(); i++) {
-            final Pair<Pointer, Integer> arg = args.get(i);
+        for (int i = 0; i < args.length; i++) {
+            final Pair<Pointer, Integer> arg = args[i];
             result = clSetKernelArg(kernel, i, arg.getValue(), arg.getKey());
             if (result != CL_SUCCESS) {
                 return result;
