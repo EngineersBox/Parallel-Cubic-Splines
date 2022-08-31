@@ -1,44 +1,52 @@
-#define AP 0.5
+typedef struct __attribute__((packed)) Point {
+    double x;
+    double y;
+} Point;
 
-kernel void computeBezierControlPoints(__global double* points, __global double* bezierPoints) {
+const Point calculateBezierPoint(const Point* a, const Point* b, const Point* c, const Point* projectionReferencePoint, double smoothFactor, int direction) {
+    double pointDiffACX = c->x - a->x;
+    double pointDiffACY = c->y - a->y;
+    double vecACLength = sqrt(pointDiffACX * pointDiffACX + pointDiffACY * pointDiffACY);
+    pointDiffACX = (pointDiffACX / vecACLength) * direction;
+    pointDiffACY = (pointDiffACY / vecACLength) * direction;
+
+    double vecProjectionFactor = fabs((b->x - projectionReferencePoint->x) * pointDiffACX + (b->y - projectionReferencePoint->y) * pointDiffACY);
+    double projectedX = vecProjectionFactor * pointDiffACX;
+    double projectedY = vecProjectionFactor * pointDiffACY;
+
+    return (const Point) {
+        .x = b->x - smoothFactor * projectedX,
+        .y = b->y - smoothFactor * projectedY
+    };
+}
+
+kernel void computeBezierControlPoints(global read_only const double* restrict points, global write_only double* restrict bezierPoints, float smoothFactor) {
     int i = get_global_id(0);
+    bool firstPointInPair = i % 2 == 0;
+    int index = floor(i / 2.0);
 
-    double paX = points[(i * 2)];
-    double paY = points[(i * 2) + 1];
-    double pbX = points[(i * 2) + 2];
-    double pbY = points[(i * 2) + 3];
-    double pcX = points[(i * 2) + 4];
-    double pcY = points[(i * 2) + 5];
+    const Point a = (const Point) {
+        .x = points[(index * 2)],
+        .y = points[(index * 2) + 1]
+    };
+    const Point b = (const Point) {
+        .x = points[(index * 2) + 2],
+        .y = points[(index * 2) + 3]
+    };
+    const Point c = (const Point) {
+        .x = points[(index * 2) + 4],
+        .y = points[(index * 2) + 5]
+    };
 
-    double abX = pbX - paX;
-    double abY = pbY - paY;
-    double acX = pcX - paX;
-    double acY = pcY - paY;
-    double lac = sqrt(acX * acX + acY * acY);
-    acX = acX / lac;
-    acY = acY / lac;
+    const Point bezierPoint = calculateBezierPoint(
+        &a,
+        &b,
+        &c,
+        firstPointInPair ? &a : &c,
+        smoothFactor,
+        firstPointInPair ? 1 : -1
+    );
 
-    double proj = abX * acX + abY * acY;
-    proj = fabs(proj);
-    double apX = proj * acX;
-    double apY = proj * acY;
-
-    double p1X = pbX - AP * apX;
-    double p1Y = pbY - AP * apY;
-    bezierPoints[(i * 4)] = p1X;
-    bezierPoints[(i * 4) + 1] = p1Y;
-
-    acX = -acX;
-    acY = -acY;
-    double cbX = pbX - pcX;
-    double cbY = pbY - pcY;
-    proj = cbX * acX + cbY * acY;
-    proj = fabs(proj);
-    apX = proj * acX;
-    apY = proj * acY;
-
-    double p2X = pbX - AP * apX;
-    double p2Y = pbY - AP * apY;
-    bezierPoints[(i * 4) + 2] = p2X;
-    bezierPoints[(i * 4) + 3] = p2Y;
+    bezierPoints[(index * 4) + (firstPointInPair ? 0 : 2)] = bezierPoint.x;
+    bezierPoints[(index * 4) + (firstPointInPair ? 1 : 3)] = bezierPoint.y;
 }

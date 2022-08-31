@@ -17,6 +17,7 @@ public class OpenCLParams {
     private final cl_context context;
     private final cl_command_queue queue;
     private final cl_program program;
+    private final cl_device_id device;
 
     public OpenCLParams(final String filePath) {
         final long deviceType = CL_DEVICE_TYPE_ALL;
@@ -49,14 +50,14 @@ public class OpenCLParams {
                 deviceIds,
                 null
         );
-        final cl_device_id device = deviceIds[0];
+        this.device = deviceIds[0];
 
         final cl_context_properties contextProperties = new cl_context_properties();
         contextProperties.addProperty(CL_CONTEXT_PLATFORM, platform);
         this.context = clCreateContext(
                 contextProperties,
                 1,
-                new cl_device_id[]{device},
+                new cl_device_id[]{this.device},
                 null,
                 null,
                 null
@@ -65,7 +66,7 @@ public class OpenCLParams {
         final cl_queue_properties properties = new cl_queue_properties();
         this.queue = clCreateCommandQueueWithProperties(
                 this.context,
-                device,
+                this.device,
                 properties,
                 null
         );
@@ -107,5 +108,27 @@ public class OpenCLParams {
 
     public cl_program getProgram() {
         return this.program;
+    }
+
+    public long getMaxWorkGroupSize(final cl_kernel kernel) {
+        final long[] workGroupSize = new long[1];
+        final int result = clGetKernelWorkGroupInfo(
+                kernel,
+                this.device,
+                CL_KERNEL_WORK_GROUP_SIZE,
+                Sizeof.cl_ulong,
+                Pointer.to(workGroupSize),
+                null
+        );
+        return result != CL_SUCCESS ? -1 : workGroupSize[0];
+    }
+
+    public void releaseAll(final cl_kernel kernel) {
+        clReleaseProgram(this.program);
+        if (kernel != null) {
+            clReleaseKernel(kernel);
+        }
+        clReleaseCommandQueue(this.queue);
+        clReleaseContext(this.context);
     }
 }
