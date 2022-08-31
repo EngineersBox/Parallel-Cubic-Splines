@@ -75,7 +75,7 @@ const Point calculateBezierPoint(const Point* a, const Point* b, const Point* c,
  * +------+------------------+
  * | 0    | 1111111111       | <-- [Line: 1] First line executes on all threads
  * | 1    | 1111111111       | <-- [Line: 3] Our previously, thread specific line execution is now just an arithmetic operation not specific to threads
- * | 3    | 1111111111       | <-- [Line: 8] Execution has return to normal, we no longer have thread specific execution
+ * | 2    | 1111111111       | <-- [Line: 8] Execution has return to normal, we no longer have thread specific execution
  * +------+------------------+
  *
  * Using this simple trick, we have sucessfully returned out code back to being fully parallel
