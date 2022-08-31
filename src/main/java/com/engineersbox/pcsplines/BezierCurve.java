@@ -9,7 +9,6 @@ import org.jocl.cl_mem;
 
 import javax.swing.*;
 import java.awt.*;
-import java.awt.geom.Path2D;
 import java.awt.geom.Point2D;
 
 import static org.jocl.CL.*;
@@ -17,19 +16,19 @@ import static org.jocl.CL.*;
 public class BezierCurve extends JComponent {
 
     private static final String COMPUTE_CONTROL_POINTS_KERNEL_NAME = "computeBezierControlPoints";
-    private static final float AP = 0.5f;
     private final float smoothFactor;
     private final Point2D[] initialPoints;
-    private final OpenCLParams openclParams;
-    private Point2D[] bezierPoints;
+    private final transient OpenCLParams openclParams;
+    private final Point2D[] bezierPoints;
 
     public BezierCurve(final Point2D[] points,
                        final float smoothFactor,
-                       final OpenCLParams openclParams) {
+                       final OpenCLParams openclParams,
+                       final boolean useGpuAcceleration) {
         this.initialPoints = points;
         this.smoothFactor = smoothFactor;
         this.openclParams = openclParams;
-        this.bezierPoints = calculateControlPointsGPU();
+        this.bezierPoints = useGpuAcceleration ? calculateControlPointsGPU() : calculateControlPointsCPU();
     }
 
     private Point2D[] calculateControlPointsGPU() {
@@ -71,7 +70,7 @@ public class BezierCurve extends JComponent {
                 null,
                 null
         );
-        final cl_kernel kernel = this.openclParams.getKernel(COMPUTE_CONTROL_POINTS_KERNEL_NAME);
+        final cl_kernel kernel = this.openclParams.getKernel(BezierCurve.COMPUTE_CONTROL_POINTS_KERNEL_NAME);
         result = OpenCLUtils.bindKernelArgs(
                 kernel,
                 Pair.of(Pointer.to(deviceInitialPoints), Sizeof.cl_mem),
@@ -84,8 +83,6 @@ public class BezierCurve extends JComponent {
             this.openclParams.releaseAll(kernel);
             throw new IllegalStateException("Unable to bind kernel args: " + stringFor_errorCode(result));
         }
-        final long maxWorkGroupSize = this.openclParams.getMaxWorkGroupSize(kernel);
-        System.out.println("Max work group size: " + maxWorkGroupSize);
         result = clEnqueueNDRangeKernel(
                 this.openclParams.getQueue(),
                 kernel,
@@ -93,7 +90,7 @@ public class BezierCurve extends JComponent {
                 null,
                 new long[]{Math.min(
                         2 * (this.initialPoints.length - 2L),
-                        maxWorkGroupSize
+                        this.openclParams.getMaxWorkGroupSize(kernel)
                 )},
                 new long[]{1},
                 0,
@@ -140,37 +137,33 @@ public class BezierCurve extends JComponent {
         return finalControlPoints;
     }
 
+    private Point2D[] calculateControlPointsCPU() {
+        // TODO
+        return new Point2D[]{};
+    }
+
     public void draw(final Graphics2D g) {
-        final Path2D path = new Path2D.Double();
-        path.moveTo(
-                this.initialPoints[0].getX(),
-                this.initialPoints[0].getY()
-        );
+        if (this.initialPoints.length < 3 || this.bezierPoints.length < 1) {
+            return;
+        }
+        final Point2DPath path = new Point2DPath();
+        path.moveTo(this.initialPoints[0]);
         path.quadTo(
-                this.bezierPoints[0].getX(),
-                this.bezierPoints[0].getY(),
-                this.bezierPoints[1].getX(),
-                this.bezierPoints[1].getY()
+                this.bezierPoints[0],
+                this.initialPoints[1]
         );
 
         for(int i = 2; i < this.initialPoints.length - 1; i++ ) {
-            final Point2D b0 = this.bezierPoints[2*i-3];
-            final Point2D b1 = this.bezierPoints[2*i-2];
             path.curveTo(
-                    b0.getX(),
-                    b0.getY(),
-                    b1.getX(),
-                    b1.getY(),
-                    this.initialPoints[i].getX(),
-                    this.initialPoints[i].getY()
+                    this.bezierPoints[(2 * i) - 3],
+                    this.bezierPoints[(2 * i) - 2],
+                    this.initialPoints[i]
             );
         }
 
         path.quadTo(
-                this.bezierPoints[this.bezierPoints.length - 1].getX(),
-                this.bezierPoints[this.bezierPoints.length - 1].getY(),
-                this.bezierPoints[this.initialPoints.length - 1].getX(),
-                this.bezierPoints[this.initialPoints.length - 1].getY()
+                this.bezierPoints[this.bezierPoints.length - 1],
+                this.initialPoints[this.initialPoints.length - 1]
         );
         g.draw(path);
     }
@@ -189,7 +182,7 @@ public class BezierCurve extends JComponent {
             SwingUtilities.invokeLater(this);
         }
 
-        public static void main(String[] args) {
+        public static void main(final String[] args) {
             new TestMain();
         }
 
@@ -210,13 +203,13 @@ public class BezierCurve extends JComponent {
                             new Point2D.Double(370, 214),
                     },
                     0.5f,
-                    new OpenCLParams("/kernels/bezier_points.ocl")
+                    new OpenCLParams("/kernels/bezier_points.ocl"),
+                    true
             );
             contentPane.add(bezierCurve);
             this.jframe.setMinimumSize(new Dimension(100, 100));
             this.jframe.setVisible(true);
             this.jframe.pack();
-
         }
     }
 
