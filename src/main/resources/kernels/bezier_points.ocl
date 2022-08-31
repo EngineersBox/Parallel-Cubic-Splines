@@ -19,10 +19,75 @@ const Point calculateBezierPoint(const Point* a, const Point* b, const Point* c,
         .y = b->y - smoothFactor * projectedY
     };
 }
+/*
+ * This avoids the use of if statements which cause warp/wavefront divergence.
+ * The reason is that, since GPUs are SIMT/SIMD parallel then when we have a condition that
+ * only some threads meet, the warp/wavefront is split into two execution units using bit masks
+ * for each thread that either satisfies or doesn't satisfy the condition. This is called
+ * wrap/wavefront divergence. These split warps/wavefronts are executed sequenially, being treated
+ * as if two different instructions are being processed.
+ *
+ * ==== Example with if statements ====
+ *
+ * CODE:
+ * 1. int threadIdx = get_global_id(0); // Get current thread in 1D block of n threads
+ * 2. int threadSpecificValue;
+ * 3. if (threadIdx % 2 == 0) {
+ * 4.     threadSpecificValue = func(12);
+ * 5. } else {
+ * 6.     threadSpecificValue = func(5);
+ * 7. }
+ * 8. char value = someOtherOp(threadSpecificValue);
+ *
+ * Kernel:
+ *  - Global work size (block): 1
+ *  - Local work size (item): 10
+ *
+ * +------+------------------+
+ * | Time | Warp Thread Mask | <-- 0: Not active (NOP), 1: Active (INSN)
+ * +------+------------------+
+ * | 0    | 1111111111       | <-- [Line: 1] First line executes on all threads
+ * | ======= DIVERGE ======= | <-- [Line: 3] We reach the condition that is specific to only some threads
+ * | 1    | 0101010101       | <-- [Line: 4] The scheduler has prioritised a particular thread mask first, only the even threads will execute
+ * | 2    | 1010101010       | <-- [Line: 6] Now the odd threads will execute (once previous insn has finished, causing NOPs)
+ * | ====== CONVERGE ======= | <-- [Line: 7] Warp has converged again, next instruction is not thread id specific
+ * | 3    | 1111111111       | <-- [Line: 8] Execution has return to normal, we no longer have thread specific execution
+ * +------+------------------+
+ *
+ * This is bad for parallelism as some of the threads in the warp/wavefront are just NOPs,
+ * while others are executing. We can remove this issue altogether by using arithmetic operations
+ * for conditions instead of actual comparisons.
+ *
+ * ==== Example with arithmetic operations ====
+ *
+ * CODE:
+ * 1. int threadIdx = get_global_id(0); // Get current thread in 1D block of n threads
+ * 2. int modi = threadIdx % 2;
+ * 3. int threadSpecificValue = func((modi * 5) + ((1 - modi) * 12)); // Using the property of multiplying by zero on alternating threads to choose between values
+ * 4. char value = someOtherOp(threadSpecificValue);
+ *
+ * Kernel:
+ *  - Global work size (block): 1
+ *  - Local work size (item): 10
+ *
+ * +------+------------------+
+ * | Time | Warp Thread Mask | <-- 0: Not active (NOP), 1: Active (INSN)
+ * +------+------------------+
+ * | 0    | 1111111111       | <-- [Line: 1] First line executes on all threads
+ * | 1    | 1111111111       | <-- [Line: 3] Our previously, thread specific line execution is now just an arithmetic operation not specific to threads
+ * | 3    | 1111111111       | <-- [Line: 8] Execution has return to normal, we no longer have thread specific execution
+ * +------+------------------+
+ *
+ * Using this simple trick, we have sucessfully returned out code back to being fully parallel
+ * and ensured that it also takes less overall time to execute.
+ */
+inline __attribute__((always_inline)) long modAlt(int modi, long trueValue, long falseValue) {
+    return (modi * falseValue) + ((1 - modi) * trueValue);
+}
 
 kernel void computeBezierControlPoints(global read_only const double* restrict points, global write_only double* restrict bezierPoints, float smoothFactor) {
     int i = get_global_id(0);
-    bool firstPointInPair = i % 2 == 0;
+    int modi = i % 2;
     int index = floor(i / 2.0);
 
     const Point a = (const Point) {
@@ -42,11 +107,11 @@ kernel void computeBezierControlPoints(global read_only const double* restrict p
         &a,
         &b,
         &c,
-        firstPointInPair ? &a : &c,
+        (const Point*) (uintptr_t) modAlt(modi, (uintptr_t) &a, (uintptr_t) &c),
         smoothFactor,
-        firstPointInPair ? 1 : -1
+        modAlt(modi, 1, -1)
     );
 
-    bezierPoints[(index * 4) + (firstPointInPair ? 0 : 2)] = bezierPoint.x;
-    bezierPoints[(index * 4) + (firstPointInPair ? 1 : 3)] = bezierPoint.y;
+    bezierPoints[(index * 4) + modAlt(modi, 0, 2)] = bezierPoint.x;
+    bezierPoints[(index * 4) + modAlt(modi, 1, 3)] = bezierPoint.y;
 }
